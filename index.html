@@ -72,6 +72,8 @@
     border-bottom:1px solid var(--grid-line); padding-bottom:14px;
   }
   h1{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:clamp(28px,5vw,40px); margin:0; letter-spacing:0.5px;}
+  h1 a{color:inherit; text-decoration:none; cursor:pointer;}
+  h1 a:hover{opacity:0.85;}
   h1 span{color:var(--accent);}
   .tagline{color:var(--paper-dim); font-size:14px; margin:0;}
   main{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; justify-content:center;}
@@ -205,7 +207,7 @@
 <div class="wrap">
   <header>
     <div>
-      <h1>Tem<span>po</span></h1>
+      <h1><a id="homeLink" href="#">Tem<span>po</span></a></h1>
       <p class="tagline">Chess, with the clock running.</p>
     </div>
     <button class="secondary" id="newGameBtn">New game</button>
@@ -323,10 +325,7 @@
         <h2>Settings</h2>
         <p style="font-size:12px;color:var(--paper-dim);margin:0 0 8px;">Board theme</p>
         <div class="swatch-row" id="boardThemeRow"></div>
-        <p style="font-size:11px;color:var(--paper-dim);margin:10px 0 14px;">
-          Pieces use Lichess's default "Cburnett" set for clean black/white contrast.
-        </p>
-        <div class="toggle-row">
+        <div class="toggle-row" style="margin-top:14px;">
           <span>Allow premoves</span>
           <label class="toggle-switch">
             <input type="checkbox" id="premoveToggle">
@@ -503,6 +502,10 @@
   // ---------- commit ----------
   function commit(){
     if(mode==='online' && roomRef){
+      // Refreshed on every write. Pair this with a Firestore TTL policy (field
+      // "expireAt", collection "tempoRooms") so rooms nobody has touched in an
+      // hour get swept away automatically — no Cloud Functions or billing needed.
+      state.expireAt = firebase.firestore.Timestamp.fromMillis(Date.now() + 60*60*1000);
       roomRef.set(state).catch(err=>console.error('sync failed', err));
     }
     render();
@@ -537,6 +540,7 @@
     roomRef = fbDb.collection('tempoRooms').doc(roomCode);
     mode = 'online';
     state = freshState();
+    state.expireAt = firebase.firestore.Timestamp.fromMillis(Date.now() + 60*60*1000);
     roomRef.set(state).then(()=>{
       subscribeRoom();
       const url = new URL(location.href);
@@ -791,23 +795,24 @@
     const mine = myColor();
     if(!mine) return;
     const myShort = mine==='white' ? 'w':'b';
+    const preview = buildPremovePreview(); // reflects the board after premoves already queued
     if(premoveFrom===null){
-      const piece = chess.get(sq);
+      const piece = preview.get(sq);
       if(piece && piece.color===myShort){ premoveFrom = sq; render(); }
       return;
     }
     if(sq===premoveFrom){ premoveFrom=null; render(); return; }
-    const destPiece = chess.get(sq);
+    const destPiece = preview.get(sq);
     if(destPiece && destPiece.color===myShort){ premoveFrom = sq; render(); return; }
 
-    const fromPiece = chess.get(premoveFrom);
+    const fromPiece = preview.get(premoveFrom);
     let promotion = null;
     if(fromPiece && fromPiece.type==='p'){
       const destRank = sq[1];
       if((myShort==='w' && destRank==='8') || (myShort==='b' && destRank==='1')) promotion='q';
     }
     if(!prefs.premoveMultiple) premoveQueue = [];
-    if(premoveQueue.length<3) premoveQueue.push({from:premoveFrom, to:sq, promotion});
+    premoveQueue.push({from:premoveFrom, to:sq, promotion});
     premoveFrom = null;
     render();
   }
@@ -826,6 +831,24 @@
   }
   function cancelPremoves(){
     premoveQueue = []; premoveFrom = null; render();
+  }
+  function buildPremovePreview(){
+    // Local-only visual preview: shows queued premoves already played out on the board.
+    // Never touches `chess` or synced state — if a premove turns out illegal when its
+    // turn actually arrives, tryExecutePremoves() clears the queue and this preview
+    // simply stops being used, so the board reverts to the real position automatically.
+    const preview = new Chess();
+    preview.load(state.fen);
+    const mine = myColor();
+    const myShort = mine==='white' ? 'w' : 'b';
+    for(const pm of premoveQueue){
+      const parts = preview.fen().split(' ');
+      parts[1] = myShort; // pretend it's still our move so the whole queued sequence previews
+      preview.load(parts.join(' '));
+      const mv = preview.move({from:pm.from, to:pm.to, promotion:pm.promotion||undefined});
+      if(!mv) break; // stop the preview at the first move that no longer makes sense
+    }
+    return preview;
   }
 
   // ---------- MOVE HISTORY BROWSING (local per-viewer, never synced) ----------
@@ -1087,6 +1110,8 @@
     if(browsing){
       displayChess = new Chess();
       displayChess.load(positionAt(viewingIndex));
+    } else if(mode==='online' && premoveQueue.length>0){
+      displayChess = buildPremovePreview();
     }
 
     const kingInCheckSq = displayChess.in_check() ? findKingSquareOn(displayChess, displayChess.turn()) : null;
@@ -1094,7 +1119,8 @@
     const premoveSquares = {};
     premoveQueue.forEach(pm=>{ premoveSquares[pm.from]=true; premoveSquares[pm.to]=true; });
 
-    squares.forEach(sq=>{
+    squares.forEach((sq, i)=>{
+      const gridRow = Math.floor(i/8), gridCol = i%8;
       const fileIdx = FILES.indexOf(sq[0]);
       const rankNum = parseInt(sq[1],10);
       const isDark = (fileIdx + rankNum) % 2 === 0;
@@ -1102,10 +1128,12 @@
       d.className='sq ' + (isDark?'dark':'light');
       d.dataset.sq = sq;
 
-      const coord=document.createElement('div');
-      coord.className='coord';
-      coord.textContent = sq;
-      d.appendChild(coord);
+      if(gridRow===7 || gridCol===0){
+        const coord=document.createElement('div');
+        coord.className='coord';
+        coord.textContent = (gridRow===7 ? sq[0] : '') + (gridCol===0 ? sq[1] : '');
+        d.appendChild(coord);
+      }
 
       const piece = displayChess.get(sq);
       if(piece){
@@ -1407,6 +1435,13 @@
 
   // ---------- INIT ----------
   deviceId = getDeviceId();
+  const baseUrl = location.origin + location.pathname;
+  const homeLink = document.getElementById('homeLink');
+  homeLink.href = baseUrl;
+  homeLink.addEventListener('click', (e)=>{
+    e.preventDefault();
+    location.href = baseUrl;
+  });
   applyBoardTheme();
   renderAppearanceControls();
   wirePremoveToggles();
