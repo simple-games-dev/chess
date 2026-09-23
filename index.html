@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tempo — chess with a clock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!--
+  ========================================================================
+  This uses the SAME Firebase project as Ascent. Nothing to set up here —
+  just paste the identical firebaseConfig you already have. Data is kept
+  separate by collection name (tempoRooms vs ascentRooms), so the two
+  games won't collide even though they share one database.
+  ========================================================================
+-->
+<script>
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyBw9aB2u5Vhp31XVR0zj0kr-_XkroccrS8",
+    authDomain: "ascent-game-92126.firebaseapp.com",
+    projectId: "ascent-game-92126",
+    storageBucket: "ascent-game-92126.firebasestorage.app",
+    messagingSenderId: "1008951976944",
+    appId: "1:1008951976944:web:074fe13ce558fe8f227335"
+  };
+  const FIREBASE_CONFIGURED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chess.js@0.12.1/chess.min.js"></script>
+
+<style>
+  :root{
+    --bg-navy:#0B1E33;
+    --bg-panel:#122A46;
+    --grid-line:#2E5C82;
+    --paper:#E9E4D8;
+    --paper-dim:#9FB3C8;
+    --accent:#E8A33D;
+    --accent-soft:#E8A33D33;
+    --danger:#E1604A;
+    --sq-light:#E9E4D8;
+    --sq-dark:#1B3F63;
+    --radius-sm:6px;
+    --radius-md:10px;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:inherit;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0/40px 40px,
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0/40px 40px,
+      var(--bg-navy);
+    background-blend-mode:overlay, overlay, normal;
+    color:var(--paper);
+    font-family:'Inter', system-ui, sans-serif;
+    min-height:100%;
+    display:flex; flex-direction:column; align-items:center;
+    padding:28px 16px 40px;
+  }
+  .wrap{width:100%; max-width:980px;}
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    flex-wrap:wrap; gap:8px 20px; margin-bottom:22px;
+    border-bottom:1px solid var(--grid-line); padding-bottom:14px;
+  }
+  h1{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:clamp(28px,5vw,40px); margin:0; letter-spacing:0.5px;}
+  h1 span{color:var(--accent);}
+  .tagline{color:var(--paper-dim); font-size:14px; margin:0;}
+  main{display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; justify-content:center;}
+  .board-col{flex:1 1 420px; max-width:560px; min-width:280px;}
+  .board{
+    display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr);
+    width:100%; aspect-ratio:1/1; border-radius:var(--radius-md); overflow:hidden;
+    border:1px solid var(--grid-line);
+  }
+  .sq{position:relative; display:flex; align-items:center; justify-content:center; cursor:default;}
+  .sq.light{background:var(--sq-light);}
+  .sq.dark{background:var(--sq-dark);}
+  .sq .coord{position:absolute; top:2px; left:4px; font-size:9px; font-family:'Space Grotesk',sans-serif; opacity:0.5;}
+  .sq.light .coord{color:#1B3F63;}
+  .sq.dark .coord{color:#9FB3C8;}
+  .piece{font-size:clamp(22px,6vw,42px); line-height:1; user-select:none; z-index:3;}
+  .piece.white{color:#F5F0E6; -webkit-text-stroke:1.3px #0B1E33; text-shadow:0 1px 2px rgba(0,0,0,0.4);}
+  .piece.black{color:#16283A; -webkit-text-stroke:0.6px #F5F0E6;}
+  .sq.selected{box-shadow:inset 0 0 0 3px var(--accent);}
+  .sq.last-from, .sq.last-to{box-shadow:inset 0 0 0 3px rgba(232,163,61,0.5);}
+  .sq.in-check{box-shadow:inset 0 0 0 3px var(--danger); animation:pulse 1.2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{filter:brightness(1);}50%{filter:brightness(1.3);}}
+  .sq.legal-move{cursor:pointer;}
+  .sq.legal-move::after{
+    content:""; position:absolute; width:28%; height:28%; border-radius:50%;
+    background:rgba(232,163,61,0.55); z-index:2; pointer-events:none;
+  }
+  .sq.legal-capture::after{
+    content:""; position:absolute; inset:6%; border-radius:50%;
+    background:none; border:4px solid rgba(232,163,61,0.65); width:auto; height:auto; z-index:2; pointer-events:none;
+  }
+  .sq.clickable-piece{cursor:pointer;}
+  .sq.clickable-piece .piece{filter:drop-shadow(0 0 4px rgba(232,163,61,0.7));}
+
+  .panel-col{flex:1 1 280px; max-width:340px; min-width:260px; display:flex; flex-direction:column; gap:16px;}
+  .card{background:var(--bg-panel); border:1px solid var(--grid-line); border-radius:var(--radius-md); padding:16px 18px;}
+  .card h2{font-family:'Space Grotesk',sans-serif; font-size:13px; margin:0 0 10px; color:var(--paper-dim); font-weight:600;}
+  .menu-card{text-align:center; padding:32px 20px;}
+  .menu-card p{color:var(--paper-dim); font-size:14px; margin-bottom:20px;}
+  .home-btns,.count-btns{display:flex; gap:12px; justify-content:center; flex-wrap:wrap;}
+  button{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; background:var(--accent);
+    color:#1a1204; border:none; padding:10px 18px; border-radius:var(--radius-sm); cursor:pointer;}
+  button:disabled{opacity:0.4; cursor:not-allowed;}
+  button.secondary{background:transparent; color:var(--paper); border:1px solid var(--grid-line);}
+  button.danger{background:var(--danger); color:#2a0e08;}
+  input[type=text],input[type=number]{
+    font-family:'Inter',sans-serif; font-size:14px; padding:9px 12px; border-radius:var(--radius-sm);
+    border:1px solid var(--grid-line); background:#0F2540; color:var(--paper); width:100%;
+  }
+  .row-gap{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
+  .inline-row{display:flex; gap:8px; align-items:center;}
+  .preset-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .preset-btn{background:#0F2540; color:var(--paper); border:1px solid var(--grid-line); font-size:13px; padding:10px 8px;}
+  .preset-btn.chosen{background:var(--accent); color:#1a1204; border-color:var(--accent);}
+  .room-code{font-family:'Space Grotesk',sans-serif; font-size:30px; font-weight:700; letter-spacing:4px;
+    color:var(--accent); text-align:center; margin:6px 0 4px;}
+  .seat-row{display:flex; align-items:center; gap:10px; padding:8px; border-radius:var(--radius-sm);
+    border:1px solid var(--grid-line); margin-bottom:8px;}
+  .seat-row .swatch{width:14px;height:14px;border-radius:50%; flex:0 0 auto; border:1px solid rgba(255,255,255,0.3);}
+  .seat-row .you{color:var(--accent); font-size:12px; margin-left:auto;}
+  .clocks{display:flex; gap:10px;}
+  .clock{
+    flex:1; text-align:center; padding:14px 8px; border-radius:var(--radius-sm);
+    border:1px solid var(--grid-line); font-family:'Space Grotesk',sans-serif;
+  }
+  .clock .who{font-size:12px; color:var(--paper-dim); margin-bottom:4px;}
+  .clock .time{font-size:26px; font-weight:700;}
+  .clock.active{border-color:var(--accent); background:rgba(232,163,61,0.1);}
+  .clock.low .time{color:var(--danger);}
+  .turn-row{display:flex; align-items:center; gap:10px; margin-top:14px;}
+  .chip{width:14px;height:14px;border-radius:50%; flex:0 0 auto; border:1px solid rgba(255,255,255,0.3);}
+  .turn-instruction{margin:10px 0 0; color:var(--paper-dim); font-size:13px; line-height:1.5;}
+  .moves-list{max-height:180px; overflow-y:auto; font-size:13px; color:var(--paper-dim); line-height:1.8;}
+  .moves-list .mv-num{color:var(--paper-dim); opacity:0.6; margin-right:4px;}
+  details summary{cursor:pointer; color:var(--paper-dim); font-size:13px; margin-bottom:6px;}
+  details p{font-size:13px; color:var(--paper-dim); line-height:1.6; margin:8px 0 0;}
+  .overlay{position:fixed; inset:0; background:rgba(6,14,24,0.82); display:flex; align-items:center;
+    justify-content:center; z-index:50; padding:20px;}
+  .overlay-card{background:var(--bg-panel); border:1px solid var(--accent); border-radius:var(--radius-md);
+    padding:36px 32px; text-align:center; max-width:380px;}
+  .overlay-card h2{font-family:'Space Grotesk',sans-serif; font-size:26px; margin:0 0 8px;}
+  .overlay-card p{color:var(--paper-dim); font-size:14px; margin:0 0 20px;}
+  .promo-btns{display:flex; gap:10px; justify-content:center; margin-top:8px;}
+  .promo-btns button{font-size:26px; padding:10px 16px;}
+  .hidden{display:none !important;}
+  @media (max-width:640px){ main{flex-direction:column; align-items:stretch;} .board-col,.panel-col{max-width:100%;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Tem<span>po</span></h1>
+      <p class="tagline">Chess, with the clock running.</p>
+    </div>
+    <button class="secondary" id="newGameBtn">New game</button>
+  </header>
+
+  <main>
+    <div class="board-col">
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="panel-col">
+
+      <div class="card menu-card" id="homeCard">
+        <h2>How do you want to play?</h2>
+        <div class="home-btns">
+          <button id="localBtn">Play on this device</button>
+          <button class="secondary" id="onlineBtn">Play online with friends</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="onlineSetupCard">
+        <h2>Play online</h2>
+        <div id="notConfiguredNote" class="hidden">
+          <p style="font-size:13px;color:var(--paper-dim);line-height:1.6;">
+            Online play needs your Firebase config pasted into FIREBASE_CONFIG near the top of this file.
+          </p>
+        </div>
+        <div id="configuredControls" class="hidden">
+          <div class="row-gap"><button id="createRoomBtn">Create a room</button></div>
+          <div class="row-gap">
+            <div class="inline-row">
+              <input type="text" id="joinCodeInput" placeholder="Room code" maxlength="6">
+              <button class="secondary" id="joinRoomBtn">Join</button>
+            </div>
+          </div>
+        </div>
+        <button class="secondary" id="backHomeBtn" style="margin-top:14px;">Back</button>
+      </div>
+
+      <div class="card hidden" id="lobbyCard">
+        <h2>Room lobby</h2>
+        <div class="room-code" id="lobbyCode"></div>
+        <div class="inline-row" style="margin-bottom:12px;">
+          <button class="secondary" id="copyLinkBtn" style="flex:1;">Copy invite link</button>
+        </div>
+        <div id="lobbySeats" class="row-gap"></div>
+        <div id="lobbyTimeControl" class="row-gap"></div>
+        <button id="startOnlineBtn" class="hidden" style="margin-top:6px;">Start game</button>
+      </div>
+
+      <div class="card hidden" id="tcCard">
+        <h2>Choose a time control</h2>
+        <div id="tcPresets" class="preset-grid"></div>
+        <div class="row-gap">
+          <p style="font-size:12px;color:var(--paper-dim);margin:0;">Or custom (minutes + increment seconds)</p>
+          <div class="inline-row">
+            <input type="number" id="customMin" placeholder="Minutes" min="1" max="180" value="10">
+            <input type="number" id="customInc" placeholder="Increment (s)" min="0" max="60" value="0">
+            <button class="secondary" id="useCustomBtn">Use</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="clockCard">
+        <h2>Clocks</h2>
+        <div class="clocks">
+          <div class="clock" id="clockWhite"><div class="who">White</div><div class="time">--:--</div></div>
+          <div class="clock" id="clockBlack"><div class="who">Black</div><div class="time">--:--</div></div>
+        </div>
+        <div class="turn-row">
+          <div class="chip" id="turnChip"></div>
+          <div id="turnLabel" style="font-family:'Space Grotesk',sans-serif; font-weight:600;"></div>
+        </div>
+        <p class="turn-instruction" id="turnInstruction"></p>
+        <div class="row-gap">
+          <button class="danger" id="resignBtn">Resign</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="movesCard">
+        <h2>Moves</h2>
+        <div class="moves-list" id="movesList"></div>
+      </div>
+
+      <div class="card">
+        <details>
+          <summary>How to play</summary>
+          <p>
+            Standard chess rules, including castling, en passant and pawn promotion. Pick a time control before
+            the game starts — either a preset or your own minutes-plus-increment. Each side's clock only runs on
+            their own turn; increment is added the moment you complete a move. Running out of time loses the
+            game, same as checkmate, resignation, stalemate, or an automatically detected draw (repetition,
+            insufficient material, or the 50-move rule).
+          </p>
+        </details>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="overlay hidden" id="promoOverlay">
+  <div class="overlay-card">
+    <h2>Promote to</h2>
+    <div class="promo-btns" id="promoBtns"></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="overlay-card">
+    <h2 id="overlayTitle"></h2>
+    <p id="overlayText"></p>
+    <button id="overlayBtn">Play again</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const PRESETS = [
+    {label:'Bullet · 1+0', base:60, inc:0},
+    {label:'Bullet · 2+1', base:120, inc:1},
+    {label:'Blitz · 3+2', base:180, inc:2},
+    {label:'Blitz · 5+0', base:300, inc:0},
+    {label:'Rapid · 10+5', base:600, inc:5},
+    {label:'Rapid · 15+10', base:900, inc:10},
+    {label:'Classical · 30+0', base:1800, inc:0}
+  ];
+  const FILES = ['a','b','c','d','e','f','g','h'];
+  const PIECE_GLYPH = {p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚'};
+
+  let mode = null;         // 'local' | 'online'
+  let state = null;        // shared game/lobby state
+  let localTC = null;      // chosen time control while in local pre-game screen
+  let roomCode = null;
+  let roomRef = null;
+  let deviceId = null;
+  let chess = new Chess();
+  let selectedSquare = null;
+  let legalTargetsMap = {}; // to-square -> array of move objects (for promotion detection)
+  let pendingPromotion = null; // {from,to}
+  let tickTimer = null;
+
+  // ---------- Firebase ----------
+  let fbDb = null;
+  if(FIREBASE_CONFIGURED && window.firebase){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    fbDb = firebase.firestore();
+  }
+
+  function getDeviceId(){
+    let id = localStorage.getItem('tempo_device_id');
+    if(!id){
+      id = 'd-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('tempo_device_id', id);
+    }
+    return id;
+  }
+
+  function freshState(){
+    return {
+      phase:'lobby', // lobby, playing, gameover
+      seats:{white:null, black:null},
+      seatNames:{white:'', black:''},
+      timeControl:null,
+      fen:null,
+      historySAN:[],
+      whiteRemaining:0,
+      blackRemaining:0,
+      turnStartTs:0,
+      incrementMs:0,
+      lastMove:null,
+      winner:null,
+      winReason:''
+    };
+  }
+
+  // ---------- commit ----------
+  function commit(){
+    if(mode==='online' && roomRef){
+      roomRef.set(state).catch(err=>console.error('sync failed', err));
+    }
+    render();
+  }
+
+  // ---------- LOCAL MODE ----------
+  function startLocalGame(tc){
+    mode = 'local';
+    state = freshState();
+    state.timeControl = tc;
+    chess = new Chess();
+    state.fen = chess.fen();
+    state.whiteRemaining = tc.base*1000;
+    state.blackRemaining = tc.base*1000;
+    state.incrementMs = tc.inc*1000;
+    state.turnStartTs = Date.now();
+    state.phase = 'playing';
+    state.seatNames = {white:'White', black:'Black'};
+    commit();
+  }
+
+  // ---------- ONLINE MODE ----------
+  function genRoomCode(){
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let s=''; for(let i=0;i<5;i++) s += chars[Math.floor(Math.random()*chars.length)];
+    return s;
+  }
+  function createRoom(){
+    if(!fbDb) return;
+    roomCode = genRoomCode();
+    roomRef = fbDb.collection('tempoRooms').doc(roomCode);
+    mode = 'online';
+    state = freshState();
+    roomRef.set(state).then(()=>{
+      subscribeRoom();
+      const url = new URL(location.href);
+      url.searchParams.set('room', roomCode);
+      history.replaceState(null,'',url.toString());
+    });
+  }
+  function joinRoom(code){
+    if(!fbDb || !code) return;
+    roomCode = code.trim().toUpperCase();
+    roomRef = fbDb.collection('tempoRooms').doc(roomCode);
+    mode = 'online';
+    roomRef.get().then(snap=>{
+      if(!snap.exists){
+        alert('No room with that code. Check it and try again.');
+        roomRef=null; roomCode=null; mode=null; render();
+        return;
+      }
+      const url = new URL(location.href);
+      url.searchParams.set('room', roomCode);
+      history.replaceState(null,'',url.toString());
+      subscribeRoom();
+    });
+  }
+  function subscribeRoom(){
+    roomRef.onSnapshot(snap=>{
+      if(!snap.exists) return;
+      state = snap.data();
+      if(state.fen) chess.load(state.fen);
+      selectedSquare = null; legalTargetsMap = {};
+      render();
+    }, err=>console.error('room subscription error', err));
+  }
+  function claimSeat(color, name){
+    if(!state || state.seats[color]) return;
+    const cleanName = (name||'').trim().slice(0,20) || (color==='white'?'White':'Black');
+    state.seats[color] = deviceId;
+    state.seatNames[color] = cleanName;
+    commit();
+  }
+  function startOnlineGame(){
+    chess = new Chess();
+    state.fen = chess.fen();
+    state.whiteRemaining = state.timeControl.base*1000;
+    state.blackRemaining = state.timeControl.base*1000;
+    state.incrementMs = state.timeControl.inc*1000;
+    state.turnStartTs = Date.now();
+    state.phase = 'playing';
+    state.historySAN = [];
+    state.lastMove = null;
+    state.winner = null; state.winReason = '';
+    commit();
+  }
+
+  function myColor(){
+    if(mode!=='online' || !state || !state.seats) return null;
+    if(state.seats.white===deviceId) return 'white';
+    if(state.seats.black===deviceId) return 'black';
+    return null;
+  }
+  function isMyTurnToAct(){
+    if(mode!=='online') return true;
+    const active = chess.turn()==='w' ? 'white':'black';
+    return myColor()===active;
+  }
+
+  // ---------- MOVE LOGIC ----------
+  function selectSquare(sq){
+    const piece = chess.get(sq);
+    if(!piece) return;
+    const activeColor = chess.turn();
+    if(piece.color !== activeColor) return;
+    const moves = chess.moves({square:sq, verbose:true});
+    if(moves.length===0) return;
+    selectedSquare = sq;
+    legalTargetsMap = {};
+    moves.forEach(m=>{
+      if(!legalTargetsMap[m.to]) legalTargetsMap[m.to] = [];
+      legalTargetsMap[m.to].push(m);
+    });
+    render();
+  }
+  function deselect(){ selectedSquare=null; legalTargetsMap={}; render(); }
+
+  function attemptMove(to){
+    const opts = legalTargetsMap[to];
+    if(!opts) return;
+    if(opts.length>1 || opts[0].promotion){
+      pendingPromotion = {from:selectedSquare, to};
+      render();
+      return;
+    }
+    finalizeMove(selectedSquare, to, null);
+  }
+
+  function finalizeMove(from, to, promotion){
+    const moverColor = chess.turn(); // 'w' or 'b' of the mover
+    const moveObj = promotion ? {from,to,promotion} : {from,to};
+    const result = chess.move(moveObj);
+    if(!result) return;
+
+    const elapsed = Date.now() - state.turnStartTs;
+    if(moverColor==='w'){
+      state.whiteRemaining = Math.max(0, state.whiteRemaining - elapsed) + state.incrementMs;
+    } else {
+      state.blackRemaining = Math.max(0, state.blackRemaining - elapsed) + state.incrementMs;
+    }
+    state.turnStartTs = Date.now();
+    state.fen = chess.fen();
+    state.historySAN = chess.history();
+    state.lastMove = {from, to};
+
+    selectedSquare = null; legalTargetsMap = {}; pendingPromotion = null;
+
+    checkGameOver(moverColor);
+    commit();
+  }
+
+  function checkGameOver(moverColor){
+    if(chess.in_checkmate()){
+      declareResult(moverColor==='w'?'white':'black', 'checkmate');
+    } else if(chess.in_stalemate()){
+      declareResult(null, 'stalemate');
+    } else if(chess.in_threefold_repetition()){
+      declareResult(null, 'draw by repetition');
+    } else if(chess.insufficient_material()){
+      declareResult(null, 'draw — insufficient material');
+    } else if(chess.in_draw()){
+      declareResult(null, 'draw — 50-move rule');
+    }
+  }
+
+  function declareResult(winnerColor, reason){
+    state.phase = 'gameover';
+    state.winner = winnerColor;
+    state.winReason = reason;
+  }
+
+  function resign(){
+    if(state.phase!=='playing') return;
+    const active = chess.turn()==='w' ? 'white':'black';
+    let resigningColor;
+    if(mode==='online'){
+      resigningColor = myColor();
+      if(!resigningColor) return;
+    } else {
+      resigningColor = active; // hotseat: whoever's turn resigns via the single button context
+    }
+    const winnerColor = resigningColor==='white' ? 'black':'white';
+    declareResult(winnerColor, `${resigningColor} resigned`);
+    commit();
+  }
+
+  function checkFlagfall(){
+    if(!state || state.phase!=='playing') return;
+    const active = chess.turn()==='w' ? 'white':'black';
+    const remaining = active==='white' ? state.whiteRemaining : state.blackRemaining;
+    const live = remaining - (Date.now() - state.turnStartTs);
+    if(live<=0){
+      const winnerColor = active==='white' ? 'black':'white';
+      declareResult(winnerColor, `${active} ran out of time`);
+      commit();
+    }
+  }
+
+  // ---------- RENDER ----------
+  const boardEl = document.getElementById('board');
+  const homeCard = document.getElementById('homeCard');
+  const onlineSetupCard = document.getElementById('onlineSetupCard');
+  const lobbyCard = document.getElementById('lobbyCard');
+  const tcCard = document.getElementById('tcCard');
+  const clockCard = document.getElementById('clockCard');
+  const movesCard = document.getElementById('movesCard');
+  const overlay = document.getElementById('overlay');
+  const promoOverlay = document.getElementById('promoOverlay');
+
+  function hideAllCards(){
+    [homeCard,onlineSetupCard,lobbyCard,tcCard,clockCard,movesCard].forEach(el=>el.classList.add('hidden'));
+  }
+
+  function fmtTime(ms){
+    if(ms<0) ms=0;
+    const totalSec = Math.ceil(ms/1000);
+    const m = Math.floor(totalSec/60);
+    const s = totalSec%60;
+    return m + ':' + String(s).padStart(2,'0');
+  }
+
+  function render(){
+    if(!mode){
+      hideAllCards(); homeCard.classList.remove('hidden');
+      overlay.classList.add('hidden'); promoOverlay.classList.add('hidden');
+      renderEmptyBoard();
+      stopTicking();
+      return;
+    }
+    if(mode==='online' && !state){
+      hideAllCards(); onlineSetupCard.classList.remove('hidden');
+      renderOnlineSetup(); renderEmptyBoard(); stopTicking();
+      return;
+    }
+    if(mode==='pending-local-tc'){
+      hideAllCards(); tcCard.classList.remove('hidden');
+      renderTimeControlPicker(); renderEmptyBoard(); stopTicking();
+      return;
+    }
+    if(!state) return;
+
+    if(state.phase==='lobby'){
+      hideAllCards(); lobbyCard.classList.remove('hidden');
+      renderLobby(); renderEmptyBoard(); overlay.classList.add('hidden');
+      stopTicking();
+      return;
+    }
+
+    hideAllCards();
+    clockCard.classList.remove('hidden');
+    movesCard.classList.remove('hidden');
+    renderBoard();
+    renderClocks();
+    renderMoves();
+    startTicking();
+
+    if(state.phase==='gameover'){
+      overlay.classList.remove('hidden');
+      const w = document.getElementById('overlayTitle');
+      const t = document.getElementById('overlayText');
+      if(state.winner){
+        w.textContent = `${cap(state.winner)} wins`;
+        w.style.color = 'var(--accent)';
+      } else {
+        w.textContent = 'Draw';
+        w.style.color = 'var(--paper)';
+      }
+      t.textContent = cap(state.winReason||'');
+    } else {
+      overlay.classList.add('hidden');
+    }
+
+    if(pendingPromotion){
+      promoOverlay.classList.remove('hidden');
+      renderPromoButtons();
+    } else {
+      promoOverlay.classList.add('hidden');
+    }
+  }
+  function cap(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : ''; }
+
+  function renderEmptyBoard(){
+    boardEl.innerHTML='';
+    for(let i=0;i<64;i++){
+      const d=document.createElement('div');
+      const r=Math.floor(i/8), c=i%8;
+      d.className='sq ' + (((r+c)%2===0)?'dark':'light');
+      boardEl.appendChild(d);
+    }
+  }
+
+  function renderOnlineSetup(){
+    const configured = document.getElementById('configuredControls');
+    const notConfigured = document.getElementById('notConfiguredNote');
+    if(FIREBASE_CONFIGURED){ configured.classList.remove('hidden'); notConfigured.classList.add('hidden'); }
+    else { configured.classList.add('hidden'); notConfigured.classList.remove('hidden'); }
+  }
+
+  function renderTimeControlPicker(){
+    const box = document.getElementById('tcPresets');
+    box.innerHTML='';
+    PRESETS.forEach(tc=>{
+      const b=document.createElement('button');
+      b.className='preset-btn';
+      b.textContent=tc.label;
+      b.addEventListener('click', ()=> startLocalGame(tc));
+      box.appendChild(b);
+    });
+  }
+
+  function renderLobby(){
+    document.getElementById('lobbyCode').textContent = roomCode;
+    const seatsEl = document.getElementById('lobbySeats');
+    seatsEl.innerHTML = '';
+    ['white','black'].forEach(color=>{
+      const row = document.createElement('div');
+      row.className='seat-row';
+      const sw = document.createElement('div');
+      sw.className='swatch';
+      sw.style.background = color==='white' ? '#F5F0E6' : '#16283A';
+      row.appendChild(sw);
+      if(state.seats[color]){
+        const nm=document.createElement('div'); nm.textContent = state.seatNames[color];
+        row.appendChild(nm);
+        if(state.seats[color]===deviceId){
+          const you=document.createElement('div'); you.className='you'; you.textContent='you';
+          row.appendChild(you);
+        }
+      } else {
+        const label=document.createElement('div'); label.textContent = `${cap(color)} — open`;
+        row.appendChild(label);
+        const btn=document.createElement('button'); btn.className='secondary'; btn.style.marginLeft='auto';
+        btn.textContent='Join';
+        btn.addEventListener('click', ()=>{
+          const nm = prompt('Your name?', '');
+          if(nm===null) return;
+          claimSeat(color, nm);
+        });
+        row.appendChild(btn);
+      }
+      seatsEl.appendChild(row);
+    });
+
+    const tcBox = document.getElementById('lobbyTimeControl');
+    tcBox.innerHTML = '';
+    const tcTitle = document.createElement('p');
+    tcTitle.style.cssText='font-size:13px;color:var(--paper-dim);margin:0 0 8px;';
+    tcTitle.textContent = state.timeControl ? `Time control: ${state.timeControl.label}` : 'Choose a time control:';
+    tcBox.appendChild(tcTitle);
+    if(!state.timeControl){
+      const grid = document.createElement('div'); grid.className='preset-grid';
+      PRESETS.forEach(tc=>{
+        const b=document.createElement('button'); b.className='preset-btn'; b.textContent=tc.label;
+        b.addEventListener('click', ()=>{ state.timeControl = tc; commit(); });
+        grid.appendChild(b);
+      });
+      tcBox.appendChild(grid);
+      const custom = document.createElement('div'); custom.className='inline-row'; custom.style.marginTop='8px';
+      custom.innerHTML = `<input type="number" id="lobbyCustomMin" placeholder="Minutes" min="1" max="180" value="10">
+        <input type="number" id="lobbyCustomInc" placeholder="Increment (s)" min="0" max="60" value="0">
+        <button class="secondary" id="lobbyUseCustomBtn">Use</button>`;
+      tcBox.appendChild(custom);
+      document.getElementById('lobbyUseCustomBtn').addEventListener('click', ()=>{
+        const min = parseFloat(document.getElementById('lobbyCustomMin').value)||10;
+        const inc = parseFloat(document.getElementById('lobbyCustomInc').value)||0;
+        state.timeControl = {label:`Custom · ${min}+${inc}`, base:Math.round(min*60), inc:Math.round(inc)};
+        commit();
+      });
+    } else {
+      const change = document.createElement('button'); change.className='secondary'; change.textContent='Change';
+      change.addEventListener('click', ()=>{ state.timeControl=null; commit(); });
+      tcBox.appendChild(change);
+    }
+
+    const startBtn = document.getElementById('startOnlineBtn');
+    const ready = state.seats.white && state.seats.black && state.timeControl;
+    startBtn.classList.toggle('hidden', !ready);
+  }
+
+  function renderPromoButtons(){
+    const box = document.getElementById('promoBtns');
+    box.innerHTML='';
+    const activeColor = chess.turn();
+    ['q','r','b','n'].forEach(p=>{
+      const btn = document.createElement('button');
+      btn.className='piece ' + (activeColor==='w'?'white':'black');
+      btn.style.background='#0F2540'; btn.style.border='1px solid var(--grid-line)';
+      btn.textContent = PIECE_GLYPH[p];
+      btn.addEventListener('click', ()=>{
+        finalizeMove(pendingPromotion.from, pendingPromotion.to, p);
+      });
+      box.appendChild(btn);
+    });
+  }
+
+  function renderBoard(){
+    boardEl.innerHTML='';
+    const flip = (mode==='online' && myColor()==='black');
+    let squares = [];
+    for(let rank=8; rank>=1; rank--) for(let f=0; f<8; f++) squares.push(FILES[f]+rank);
+    if(flip) squares = squares.slice().reverse();
+
+    const kingInCheckSq = chess.in_check() ? findKingSquare(chess.turn()) : null;
+
+    squares.forEach(sq=>{
+      const fileIdx = FILES.indexOf(sq[0]);
+      const rankNum = parseInt(sq[1],10);
+      const isDark = (fileIdx + rankNum) % 2 === 0;
+      const d=document.createElement('div');
+      d.className='sq ' + (isDark?'dark':'light');
+      d.dataset.sq = sq;
+
+      const coord=document.createElement('div');
+      coord.className='coord';
+      coord.textContent = sq;
+      d.appendChild(coord);
+
+      const piece = chess.get(sq);
+      if(piece){
+        const pEl=document.createElement('div');
+        pEl.className='piece ' + (piece.color==='w'?'white':'black');
+        pEl.textContent = PIECE_GLYPH[piece.type];
+        d.appendChild(pEl);
+      }
+
+      if(selectedSquare===sq) d.classList.add('selected');
+      if(state.lastMove && (state.lastMove.from===sq || state.lastMove.to===sq)){
+        d.classList.add(state.lastMove.from===sq ? 'last-from':'last-to');
+      }
+      if(kingInCheckSq===sq) d.classList.add('in-check');
+
+      const myTurn = isMyTurnToAct();
+      if(myTurn && piece && piece.color===chess.turn() && chess.moves({square:sq}).length>0){
+        d.classList.add('clickable-piece');
+      }
+      if(myTurn && legalTargetsMap[sq]){
+        const opts = legalTargetsMap[sq];
+        d.classList.add('legal-move');
+        if(opts[0].captured || opts[0].flags.indexOf('e')!==-1) d.classList.add('legal-capture');
+      }
+
+      d.addEventListener('click', ()=>onSquareClick(sq));
+      boardEl.appendChild(d);
+    });
+  }
+
+  function findKingSquare(color){
+    for(let rank=1;rank<=8;rank++) for(let f=0;f<8;f++){
+      const sq = FILES[f]+rank;
+      const p = chess.get(sq);
+      if(p && p.type==='k' && p.color===color) return sq;
+    }
+    return null;
+  }
+
+  function onSquareClick(sq){
+    if(!state || state.phase!=='playing') return;
+    if(pendingPromotion) return;
+    if(!isMyTurnToAct()) return;
+
+    if(selectedSquare===sq){ deselect(); return; }
+    if(legalTargetsMap[sq]){ attemptMove(sq); return; }
+    const piece = chess.get(sq);
+    if(piece && piece.color===chess.turn()){ selectSquare(sq); return; }
+    deselect();
+  }
+
+  function renderClocks(){
+    const w = document.getElementById('clockWhite');
+    const b = document.getElementById('clockBlack');
+    const active = chess.turn()==='w' ? 'white':'black';
+    const liveWhite = active==='white' ? (state.whiteRemaining - (Date.now()-state.turnStartTs)) : state.whiteRemaining;
+    const liveBlack = active==='black' ? (state.blackRemaining - (Date.now()-state.turnStartTs)) : state.blackRemaining;
+    w.querySelector('.time').textContent = fmtTime(liveWhite);
+    b.querySelector('.time').textContent = fmtTime(liveBlack);
+    w.classList.toggle('active', active==='white' && state.phase==='playing');
+    b.classList.toggle('active', active==='black' && state.phase==='playing');
+    w.classList.toggle('low', liveWhite<15000);
+    b.classList.toggle('low', liveBlack<15000);
+
+    const chip = document.getElementById('turnChip');
+    const label = document.getElementById('turnLabel');
+    const instr = document.getElementById('turnInstruction');
+    chip.style.background = active==='white' ? '#F5F0E6':'#16283A';
+    label.textContent = cap(active) + ' to move';
+    const myTurn = isMyTurnToAct();
+    instr.textContent = state.phase!=='playing' ? 'Game over.' : (myTurn ? 'Select a piece to move.' : 'Waiting for opponent.');
+
+    const resignBtn = document.getElementById('resignBtn');
+    resignBtn.disabled = state.phase!=='playing' || (mode==='online' && !myColor());
+  }
+
+  function renderMoves(){
+    const el = document.getElementById('movesList');
+    const hist = state.historySAN || [];
+    let html = '';
+    for(let i=0;i<hist.length;i+=2){
+      const num = (i/2)+1;
+      html += `<div><span class="mv-num">${num}.</span> ${hist[i]||''} ${hist[i+1]||''}</div>`;
+    }
+    el.innerHTML = html;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function startTicking(){
+    if(tickTimer) return;
+    tickTimer = setInterval(()=>{
+      if(!state || state.phase!=='playing'){ return; }
+      checkFlagfall();
+      if(state.phase==='playing') renderClocks();
+    }, 250);
+  }
+  function stopTicking(){
+    if(tickTimer){ clearInterval(tickTimer); tickTimer=null; }
+  }
+
+  // ---------- EVENTS ----------
+  function resetHomeCard(){
+    document.getElementById('homeCard').innerHTML = `
+      <h2>How do you want to play?</h2>
+      <div class="home-btns">
+        <button id="localBtn">Play on this device</button>
+        <button class="secondary" id="onlineBtn">Play online with friends</button>
+      </div>`;
+    document.getElementById('localBtn').addEventListener('click', ()=>{ mode='pending-local-tc'; render(); });
+    document.getElementById('onlineBtn').addEventListener('click', goOnlineSetup);
+  }
+
+  document.getElementById('localBtn').addEventListener('click', ()=>{ mode='pending-local-tc'; render(); });
+
+  function goOnlineSetup(){
+    mode='online'; state=null;
+    hideAllCards(); onlineSetupCard.classList.remove('hidden');
+    render();
+  }
+  document.getElementById('onlineBtn').addEventListener('click', goOnlineSetup);
+
+  document.getElementById('backHomeBtn').addEventListener('click', ()=>{
+    mode=null; state=null; roomRef=null; roomCode=null;
+    resetHomeCard(); render();
+  });
+
+  document.getElementById('createRoomBtn').addEventListener('click', createRoom);
+  document.getElementById('joinRoomBtn').addEventListener('click', ()=>{
+    joinRoom(document.getElementById('joinCodeInput').value);
+  });
+  document.getElementById('copyLinkBtn').addEventListener('click', ()=>{
+    navigator.clipboard.writeText(location.href).then(()=>{
+      const btn = document.getElementById('copyLinkBtn');
+      const old = btn.textContent; btn.textContent='Copied!';
+      setTimeout(()=>btn.textContent=old, 1500);
+    }).catch(()=>alert(location.href));
+  });
+
+  document.getElementById('useCustomBtn').addEventListener('click', ()=>{
+    const min = parseFloat(document.getElementById('customMin').value)||10;
+    const inc = parseFloat(document.getElementById('customInc').value)||0;
+    startLocalGame({label:`Custom · ${min}+${inc}`, base:Math.round(min*60), inc:Math.round(inc)});
+  });
+
+  document.getElementById('lobbyCard').addEventListener('click', (e)=>{
+    if(e.target.id==='startOnlineBtn') startOnlineGame();
+  });
+
+  document.getElementById('resignBtn').addEventListener('click', resign);
+
+  document.getElementById('newGameBtn').addEventListener('click', ()=>{
+    if(mode==='online' && roomRef){
+      if(!confirm('Reset this room for everyone and start a new lobby?')) return;
+      state = freshState();
+      commit();
+    } else {
+      mode=null; state=null; roomRef=null; roomCode=null;
+      resetHomeCard(); render();
+    }
+  });
+  document.getElementById('overlayBtn').addEventListener('click', ()=>{
+    if(mode==='online' && roomRef){
+      state = freshState();
+      commit();
+    } else {
+      mode=null; state=null;
+      resetHomeCard(); render();
+    }
+  });
+
+  // ---------- INIT ----------
+  deviceId = getDeviceId();
+  const urlRoom = new URLSearchParams(location.search).get('room');
+  render();
+  if(urlRoom && FIREBASE_CONFIGURED && fbDb){
+    goOnlineSetup();
+    document.getElementById('joinCodeInput').value = urlRoom;
+    joinRoom(urlRoom);
+  }
+})();
+</script>
+</body>
+</html>
