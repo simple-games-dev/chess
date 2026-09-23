@@ -159,12 +159,6 @@
   .swatch-row{display:flex; gap:8px; flex-wrap:wrap;}
   .board-swatch{width:38px; height:38px; border-radius:7px; cursor:pointer; border:2px solid var(--grid-line);}
   .board-swatch.chosen{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft);}
-  .piece-set-row{display:flex; gap:10px; flex-wrap:wrap;}
-  .piece-set-btn{display:flex; flex-direction:column; align-items:center; gap:4px; background:#0F2540;
-    border:2px solid var(--grid-line); border-radius:8px; padding:8px 12px; cursor:pointer;}
-  .piece-set-btn.chosen{border-color:var(--accent);}
-  .piece-set-btn img{width:28px; height:28px;}
-  .piece-set-btn span{font-size:11px; color:var(--paper-dim);}
   .hidden{display:none !important;}
   @media (max-width:640px){ main{flex-direction:column; align-items:stretch;} .board-col,.panel-col{max-width:100%;} }
 </style>
@@ -262,8 +256,9 @@
         <h2>Appearance</h2>
         <p style="font-size:12px;color:var(--paper-dim);margin:0 0 8px;">Board theme</p>
         <div class="swatch-row" id="boardThemeRow"></div>
-        <p style="font-size:12px;color:var(--paper-dim);margin:14px 0 8px;">Piece set</p>
-        <div class="piece-set-row" id="pieceSetRow"></div>
+        <p style="font-size:11px;color:var(--paper-dim);margin:14px 0 0;">
+          Pieces use Lichess's default "Cburnett" set for clean black/white contrast.
+        </p>
       </div>
 
       <div class="card">
@@ -319,28 +314,24 @@
     coral:  {name:'Coral',  light:'#F4DFC8', dark:'#C97B63'},
     grey:   {name:'Grey',   light:'#DADADA', dark:'#7A7A7A'}
   };
-  const PIECE_SETS = {
-    wikipedia: {name:'Classic'},
-    alpha:     {name:'Alpha'},
-    uscf:      {name:'Club'}
-  };
-  const PIECE_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/';
+  const PIECE_BASE = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
+  function pieceImgUrl(color, type){
+    // Wikimedia's "Cburnett" set — the same artwork Lichess uses as its own default pieces.
+    return PIECE_BASE + 'Chess_' + type + (color==='w' ? 'l' : 'd') + 't45.svg';
+  }
 
   function loadPrefs(){
     try{
       const raw = localStorage.getItem('tempo_prefs');
-      if(raw) return Object.assign({board:'brown', pieces:'wikipedia'}, JSON.parse(raw));
+      if(raw) return Object.assign({board:'brown'}, JSON.parse(raw));
     }catch(e){}
-    return {board:'brown', pieces:'wikipedia'};
+    return {board:'brown'};
   }
   function savePrefs(){ try{ localStorage.setItem('tempo_prefs', JSON.stringify(prefs)); }catch(e){} }
   function applyBoardTheme(){
     const t = BOARD_THEMES[prefs.board] || BOARD_THEMES.brown;
     document.documentElement.style.setProperty('--sq-light', t.light);
     document.documentElement.style.setProperty('--sq-dark', t.dark);
-  }
-  function pieceImgUrl(color, type){
-    return PIECE_BASE + prefs.pieces + '/' + color + type.toUpperCase() + '.png';
   }
   function renderAppearanceControls(){
     const boardRow = document.getElementById('boardThemeRow');
@@ -356,23 +347,6 @@
         if(state && state.phase && state.phase!=='lobby') renderBoard();
       });
       boardRow.appendChild(el);
-    });
-    const pieceRow = document.getElementById('pieceSetRow');
-    pieceRow.innerHTML='';
-    Object.keys(PIECE_SETS).forEach(key=>{
-      const p = PIECE_SETS[key];
-      const btn=document.createElement('div');
-      btn.className='piece-set-btn' + (prefs.pieces===key?' chosen':'');
-      const img=document.createElement('img');
-      img.src = PIECE_BASE+key+'/bN.png';
-      img.alt=p.name;
-      const label=document.createElement('span'); label.textContent=p.name;
-      btn.appendChild(img); btn.appendChild(label);
-      btn.addEventListener('click', ()=>{
-        prefs.pieces=key; savePrefs(); renderAppearanceControls();
-        if(state && state.phase && state.phase!=='lobby') renderBoard();
-      });
-      pieceRow.appendChild(btn);
     });
   }
   let prefs = loadPrefs();
