@@ -104,6 +104,44 @@
   }
   .sq.clickable-piece{cursor:pointer;}
   .sq.clickable-piece .piece{filter:drop-shadow(0 0 4px rgba(232,163,61,0.7));}
+  .sq.premove-sq{box-shadow:inset 0 0 0 3px rgba(214,80,80,0.75);}
+  .sq.premove-selected{box-shadow:inset 0 0 0 3px rgba(214,80,80,0.95);}
+  .history-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:rgba(232,163,61,0.12); border:1px solid var(--accent-soft); border-radius:var(--radius-sm);
+    padding:8px 10px; margin-bottom:10px; font-size:12px; color:var(--accent);
+  }
+  .history-banner button{padding:5px 10px; font-size:12px;}
+  .moves-nav{display:flex; gap:6px; margin-bottom:10px;}
+  .moves-nav button{flex:1; padding:6px; font-size:13px;}
+  .mv-entry{cursor:pointer; padding:1px 3px; border-radius:3px;}
+  .mv-entry:hover{background:rgba(232,163,61,0.15);}
+  .mv-entry.current{background:var(--accent); color:#1a1204;}
+  .toggle-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0;}
+  .toggle-row span{font-size:13px;}
+  .toggle-switch{position:relative; width:38px; height:22px; flex:0 0 auto; cursor:pointer;}
+  .toggle-switch input{position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer;}
+  .toggle-track{position:absolute; inset:0; background:var(--grid-line); border-radius:12px; transition:background 0.15s;}
+  .toggle-thumb{position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:var(--paper); transition:transform 0.15s;}
+  .toggle-switch input:checked ~ .toggle-track{background:var(--accent);}
+  .toggle-switch input:checked ~ .toggle-thumb{transform:translateX(16px);}
+  .draw-row{display:flex; gap:8px; margin-top:8px;}
+  .draw-row button{flex:1; font-size:13px; padding:8px;}
+  .give-time-row{display:flex; gap:8px; margin-top:8px;}
+  .give-time-row button{flex:1; font-size:12px; padding:8px 4px;}
+  .premove-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:rgba(214,80,80,0.12); border:1px solid rgba(214,80,80,0.4); border-radius:var(--radius-sm);
+    padding:8px 10px; margin-top:10px; font-size:12px; color:#E88787;
+  }
+  .premove-banner button{padding:5px 10px; font-size:12px;}
+  .chat-log{max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; font-size:13px; margin-bottom:10px;}
+  .chat-msg{line-height:1.4;}
+  .chat-msg .who{color:var(--accent); font-weight:600; margin-right:4px;}
+  .chat-msg.me .who{color:#7EC9A6;}
+  .chat-input-row{display:flex; gap:8px;}
+  .chat-input-row input{flex:1;}
+  .chat-input-row button{padding:9px 14px;}
 
   .panel-col{flex:1 1 280px; max-width:340px; min-width:260px; display:flex; flex-direction:column; gap:16px;}
   .card{background:var(--bg-panel); border:1px solid var(--grid-line); border-radius:var(--radius-md); padding:16px 18px;}
@@ -214,8 +252,18 @@
           <button class="secondary" id="copyLinkBtn" style="flex:1;">Copy invite link</button>
         </div>
         <div id="lobbySeats" class="row-gap"></div>
+        <button class="secondary" id="randomSeatBtn" style="margin-top:4px;">Join with a random side</button>
         <div id="lobbyTimeControl" class="row-gap"></div>
         <button id="startOnlineBtn" class="hidden" style="margin-top:6px;">Start game</button>
+      </div>
+
+      <div class="card hidden" id="chatCard">
+        <h2>Chat</h2>
+        <div class="chat-log" id="chatLog"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Say something…" maxlength="200">
+          <button class="secondary" id="chatSendBtn">Send</button>
+        </div>
       </div>
 
       <div class="card hidden" id="tcCard">
@@ -245,17 +293,53 @@
         <div class="row-gap">
           <button class="danger" id="resignBtn">Resign</button>
         </div>
+        <div class="draw-row" id="drawRow"></div>
+        <div class="give-time-row" id="giveTimeRow">
+          <button class="secondary" id="giveTime15Btn">+15s to opponent</button>
+          <button class="secondary" id="giveTime60Btn">+1m to opponent</button>
+        </div>
+        <div class="premove-banner hidden" id="premoveBanner">
+          <span id="premoveBannerText"></span>
+          <button class="secondary" id="cancelPremoveBtn">Cancel</button>
+        </div>
       </div>
 
       <div class="card hidden" id="movesCard">
         <h2>Moves</h2>
+        <div class="history-banner hidden" id="historyBanner">
+          <span id="historyBannerText"></span>
+          <button class="secondary" id="backToLiveBtn">Back to live</button>
+        </div>
+        <div class="moves-nav">
+          <button class="secondary" id="navStartBtn">|&lt;</button>
+          <button class="secondary" id="navPrevBtn">&lt;</button>
+          <button class="secondary" id="navLiveBtn">Live</button>
+          <button class="secondary" id="navNextBtn">&gt;</button>
+        </div>
         <div class="moves-list" id="movesList"></div>
       </div>
 
       <div class="card" id="appearanceCard">
-        <h2>Appearance</h2>
+        <h2>Settings</h2>
         <p style="font-size:12px;color:var(--paper-dim);margin:0 0 8px;">Board theme</p>
         <div class="swatch-row" id="boardThemeRow"></div>
+        <p style="font-size:11px;color:var(--paper-dim);margin:10px 0 14px;">
+          Pieces use Lichess's default "Cburnett" set for clean black/white contrast.
+        </p>
+        <div class="toggle-row">
+          <span>Allow premoves</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="premoveToggle">
+            <span class="toggle-track"></span><span class="toggle-thumb"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <span>Queue multiple premoves</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="premoveMultiToggle">
+            <span class="toggle-track"></span><span class="toggle-thumb"></span>
+          </label>
+        </div>
       </div>
 
       <div class="card">
@@ -320,9 +404,9 @@
   function loadPrefs(){
     try{
       const raw = localStorage.getItem('tempo_prefs');
-      if(raw) return Object.assign({board:'brown'}, JSON.parse(raw));
+      if(raw) return Object.assign({board:'brown', premoveEnabled:true, premoveMultiple:false}, JSON.parse(raw));
     }catch(e){}
-    return {board:'brown'};
+    return {board:'brown', premoveEnabled:true, premoveMultiple:false};
   }
   function savePrefs(){ try{ localStorage.setItem('tempo_prefs', JSON.stringify(prefs)); }catch(e){} }
   function applyBoardTheme(){
@@ -346,6 +430,20 @@
       boardRow.appendChild(el);
     });
   }
+  function wirePremoveToggles(){
+    const t1 = document.getElementById('premoveToggle');
+    const t2 = document.getElementById('premoveMultiToggle');
+    t1.checked = !!prefs.premoveEnabled;
+    t2.checked = !!prefs.premoveMultiple;
+    t1.addEventListener('change', ()=>{
+      prefs.premoveEnabled = t1.checked; savePrefs();
+      if(!prefs.premoveEnabled){ premoveQueue=[]; premoveFrom=null; render(); }
+    });
+    t2.addEventListener('change', ()=>{
+      prefs.premoveMultiple = t2.checked; savePrefs();
+      if(!prefs.premoveMultiple && premoveQueue.length>1){ premoveQueue = premoveQueue.slice(0,1); render(); }
+    });
+  }
   let prefs = loadPrefs();
 
   let mode = null;         // 'local' | 'online'
@@ -359,6 +457,9 @@
   let legalTargetsMap = {}; // to-square -> array of move objects (for promotion detection)
   let pendingPromotion = null; // {from,to}
   let tickTimer = null;
+  let premoveQueue = [];   // [{from,to,promotion}] — local only, never synced
+  let premoveFrom = null;  // square currently selected for a premove
+  let viewingIndex = null; // null = live; -1 = start position; N = position after move N
 
   // ---------- Firebase ----------
   let fbDb = null;
@@ -376,6 +477,8 @@
     return id;
   }
 
+  const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
   function freshState(){
     return {
       phase:'lobby', // lobby, playing, gameover
@@ -384,13 +487,16 @@
       timeControl:null,
       fen:null,
       historySAN:[],
+      historyFENs:[],
       whiteRemaining:0,
       blackRemaining:0,
       turnStartTs:0,
       incrementMs:0,
       lastMove:null,
       winner:null,
-      winReason:''
+      winReason:'',
+      drawOffer:null,
+      chat:[]
     };
   }
 
@@ -415,6 +521,7 @@
     state.turnStartTs = Date.now();
     state.phase = 'playing';
     state.seatNames = {white:'White', black:'Black'};
+    viewingIndex = null; premoveQueue = []; premoveFrom = null;
     commit();
   }
 
@@ -458,17 +565,43 @@
     roomRef.onSnapshot(snap=>{
       if(!snap.exists) return;
       state = snap.data();
+      if(!state.chat) state.chat = [];
       if(state.fen) chess.load(state.fen);
       selectedSquare = null; legalTargetsMap = {};
+      if(state.phase==='playing' && isMyTurnToAct()) tryExecutePremoves();
       render();
     }, err=>console.error('room subscription error', err));
   }
+  function deviceAlreadySeated(){
+    if(!state || !state.seats) return null;
+    if(state.seats.white===deviceId) return 'white';
+    if(state.seats.black===deviceId) return 'black';
+    return null;
+  }
   function claimSeat(color, name){
     if(!state || state.seats[color]) return;
+    const already = deviceAlreadySeated();
+    if(already && already!==color){
+      alert("You're already seated as " + cap(already) + " in this room. One browser can only hold one seat — have your friend join from their own device.");
+      return;
+    }
     const cleanName = (name||'').trim().slice(0,20) || (color==='white'?'White':'Black');
     state.seats[color] = deviceId;
     state.seatNames[color] = cleanName;
     commit();
+  }
+  function claimRandomSeat(){
+    if(!state) return;
+    if(deviceAlreadySeated()){
+      alert("You're already seated in this room. One browser can only hold one seat.");
+      return;
+    }
+    const open = ['white','black'].filter(c=>!state.seats[c]);
+    if(open.length===0) return;
+    const color = open[Math.floor(Math.random()*open.length)];
+    const nm = prompt('Your name?', '');
+    if(nm===null) return;
+    claimSeat(color, nm);
   }
   function startOnlineGame(){
     chess = new Chess();
@@ -479,8 +612,11 @@
     state.turnStartTs = Date.now();
     state.phase = 'playing';
     state.historySAN = [];
+    state.historyFENs = [];
     state.lastMove = null;
     state.winner = null; state.winReason = '';
+    state.drawOffer = null;
+    viewingIndex = null; premoveQueue = []; premoveFrom = null;
     commit();
   }
 
@@ -540,7 +676,10 @@
     state.turnStartTs = Date.now();
     state.fen = chess.fen();
     state.historySAN = chess.history();
+    if(!state.historyFENs) state.historyFENs = [];
+    state.historyFENs.push(state.fen);
     state.lastMove = {from, to};
+    state.drawOffer = null;
 
     selectedSquare = null; legalTargetsMap = {}; pendingPromotion = null;
 
@@ -595,6 +734,132 @@
     }
   }
 
+  // ---------- GIVE TIME ----------
+  function giveTime(seconds){
+    if(!state || state.phase!=='playing') return;
+    const mine = mode==='online' ? myColor() : null;
+    if(mode==='online' && !mine) return;
+    const opp = mine ? (mine==='white'?'black':'white') : (chess.turn()==='w'?'black':'white');
+    if(opp==='white') state.whiteRemaining += seconds*1000;
+    else state.blackRemaining += seconds*1000;
+    commit();
+  }
+
+  // ---------- DRAW OFFERS ----------
+  function offerDraw(){
+    if(!state || state.phase!=='playing') return;
+    if(mode==='online'){
+      const mine = myColor();
+      if(!mine || state.drawOffer) return;
+      state.drawOffer = mine;
+      commit();
+    } else {
+      declareResult(null, 'draw by agreement');
+      commit();
+    }
+  }
+  function acceptDraw(){
+    if(!state || !state.drawOffer) return;
+    declareResult(null, 'draw by agreement');
+    commit();
+  }
+  function declineDraw(){
+    if(!state || !state.drawOffer) return;
+    state.drawOffer = null;
+    commit();
+  }
+  function cancelDrawOffer(){
+    if(!state || !state.drawOffer) return;
+    state.drawOffer = null;
+    commit();
+  }
+
+  // ---------- CHAT ----------
+  function sendChatMessage(text){
+    text = (text||'').trim().slice(0,200);
+    if(!text || !state) return;
+    const mine = myColor();
+    const name = mine ? state.seatNames[mine] : 'Spectator';
+    if(!state.chat) state.chat = [];
+    state.chat.push({from:deviceId, name, text, ts:Date.now()});
+    if(state.chat.length>50) state.chat = state.chat.slice(-50);
+    commit();
+  }
+
+  // ---------- PREMOVES (online only, local to this device — never synced) ----------
+  function handlePremoveClick(sq){
+    const mine = myColor();
+    if(!mine) return;
+    const myShort = mine==='white' ? 'w':'b';
+    if(premoveFrom===null){
+      const piece = chess.get(sq);
+      if(piece && piece.color===myShort){ premoveFrom = sq; render(); }
+      return;
+    }
+    if(sq===premoveFrom){ premoveFrom=null; render(); return; }
+    const destPiece = chess.get(sq);
+    if(destPiece && destPiece.color===myShort){ premoveFrom = sq; render(); return; }
+
+    const fromPiece = chess.get(premoveFrom);
+    let promotion = null;
+    if(fromPiece && fromPiece.type==='p'){
+      const destRank = sq[1];
+      if((myShort==='w' && destRank==='8') || (myShort==='b' && destRank==='1')) promotion='q';
+    }
+    if(!prefs.premoveMultiple) premoveQueue = [];
+    if(premoveQueue.length<3) premoveQueue.push({from:premoveFrom, to:sq, promotion});
+    premoveFrom = null;
+    render();
+  }
+  function tryExecutePremoves(){
+    if(premoveQueue.length===0) return;
+    const next = premoveQueue[0];
+    const moves = chess.moves({square:next.from, verbose:true});
+    const match = moves.find(m=>m.to===next.to && (!m.promotion || m.promotion===(next.promotion||'q')));
+    premoveQueue.shift();
+    if(match){
+      finalizeMove(next.from, next.to, match.promotion ? (next.promotion||'q') : null);
+    } else {
+      premoveQueue = [];
+      render();
+    }
+  }
+  function cancelPremoves(){
+    premoveQueue = []; premoveFrom = null; render();
+  }
+
+  // ---------- MOVE HISTORY BROWSING (local per-viewer, never synced) ----------
+  function positionAt(idx){
+    // idx: -1 = start position, N = position after move N (0-based into historyFENs)
+    if(!state) return INITIAL_FEN;
+    if(idx<0) return INITIAL_FEN;
+    if(state.historyFENs && state.historyFENs[idx]) return state.historyFENs[idx];
+    return state.fen || INITIAL_FEN;
+  }
+  function goToLive(){ viewingIndex = null; render(); }
+  function navStart(){ if(!state) return; viewingIndex = (state.historySAN||[]).length>0 ? -1 : null; render(); }
+  function navPrev(){
+    if(!state) return;
+    const lastIdx = (state.historySAN||[]).length-1;
+    if(viewingIndex===null) viewingIndex = lastIdx-1;
+    else viewingIndex = Math.max(-1, viewingIndex-1);
+    render();
+  }
+  function navNext(){
+    if(!state) return;
+    const lastIdx = (state.historySAN||[]).length-1;
+    if(viewingIndex===null) return;
+    if(viewingIndex>=lastIdx){ viewingIndex = null; }
+    else viewingIndex = viewingIndex+1;
+    render();
+  }
+  function navToIndex(idx){
+    if(!state) return;
+    const lastIdx = (state.historySAN||[]).length-1;
+    viewingIndex = (idx>=lastIdx) ? null : idx;
+    render();
+  }
+
   // ---------- RENDER ----------
   const boardEl = document.getElementById('board');
   const homeCard = document.getElementById('homeCard');
@@ -603,11 +868,12 @@
   const tcCard = document.getElementById('tcCard');
   const clockCard = document.getElementById('clockCard');
   const movesCard = document.getElementById('movesCard');
+  const chatCard = document.getElementById('chatCard');
   const overlay = document.getElementById('overlay');
   const promoOverlay = document.getElementById('promoOverlay');
 
   function hideAllCards(){
-    [homeCard,onlineSetupCard,lobbyCard,tcCard,clockCard,movesCard].forEach(el=>el.classList.add('hidden'));
+    [homeCard,onlineSetupCard,lobbyCard,tcCard,clockCard,movesCard,chatCard].forEach(el=>el.classList.add('hidden'));
   }
 
   function fmtTime(ms){
@@ -640,7 +906,8 @@
 
     if(state.phase==='lobby'){
       hideAllCards(); lobbyCard.classList.remove('hidden');
-      renderLobby(); renderEmptyBoard(); overlay.classList.add('hidden');
+      if(mode==='online') chatCard.classList.remove('hidden');
+      renderLobby(); renderChat(); renderEmptyBoard(); overlay.classList.add('hidden');
       stopTicking();
       return;
     }
@@ -648,9 +915,11 @@
     hideAllCards();
     clockCard.classList.remove('hidden');
     movesCard.classList.remove('hidden');
+    if(mode==='online') chatCard.classList.remove('hidden');
     renderBoard();
     renderClocks();
     renderMoves();
+    renderChat();
     startTicking();
 
     if(state.phase==='gameover'){
@@ -711,6 +980,7 @@
     document.getElementById('lobbyCode').textContent = roomCode;
     const seatsEl = document.getElementById('lobbySeats');
     seatsEl.innerHTML = '';
+    const already = deviceAlreadySeated();
     ['white','black'].forEach(color=>{
       const row = document.createElement('div');
       row.className='seat-row';
@@ -729,16 +999,27 @@
         const label=document.createElement('div'); label.textContent = `${cap(color)} — open`;
         row.appendChild(label);
         const btn=document.createElement('button'); btn.className='secondary'; btn.style.marginLeft='auto';
-        btn.textContent='Join';
-        btn.addEventListener('click', ()=>{
-          const nm = prompt('Your name?', '');
-          if(nm===null) return;
-          claimSeat(color, nm);
-        });
+        if(already && already!==color){
+          btn.textContent='Unavailable';
+          btn.disabled = true;
+          btn.title = "You're already seated as " + cap(already) + " on this device.";
+        } else {
+          btn.textContent='Join';
+          btn.addEventListener('click', ()=>{
+            const nm = prompt('Your name?', '');
+            if(nm===null) return;
+            claimSeat(color, nm);
+          });
+        }
         row.appendChild(btn);
       }
       seatsEl.appendChild(row);
     });
+
+    const randomBtn = document.getElementById('randomSeatBtn');
+    const openSeats = ['white','black'].filter(c=>!state.seats[c]);
+    randomBtn.disabled = !!already || openSeats.length===0;
+    randomBtn.textContent = already ? "You're already seated" : 'Join with a random side';
 
     const tcBox = document.getElementById('lobbyTimeControl');
     tcBox.innerHTML = '';
@@ -801,7 +1082,17 @@
     for(let rank=8; rank>=1; rank--) for(let f=0; f<8; f++) squares.push(FILES[f]+rank);
     if(flip) squares = squares.slice().reverse();
 
-    const kingInCheckSq = chess.in_check() ? findKingSquare(chess.turn()) : null;
+    const browsing = viewingIndex!==null;
+    let displayChess = chess;
+    if(browsing){
+      displayChess = new Chess();
+      displayChess.load(positionAt(viewingIndex));
+    }
+
+    const kingInCheckSq = displayChess.in_check() ? findKingSquareOn(displayChess, displayChess.turn()) : null;
+    const premoveFromSq = premoveFrom;
+    const premoveSquares = {};
+    premoveQueue.forEach(pm=>{ premoveSquares[pm.from]=true; premoveSquares[pm.to]=true; });
 
     squares.forEach(sq=>{
       const fileIdx = FILES.indexOf(sq[0]);
@@ -816,7 +1107,7 @@
       coord.textContent = sq;
       d.appendChild(coord);
 
-      const piece = chess.get(sq);
+      const piece = displayChess.get(sq);
       if(piece){
         const pEl=document.createElement('img');
         pEl.className='piece';
@@ -826,31 +1117,38 @@
         d.appendChild(pEl);
       }
 
-      if(selectedSquare===sq) d.classList.add('selected');
-      if(state.lastMove && (state.lastMove.from===sq || state.lastMove.to===sq)){
-        d.classList.add(state.lastMove.from===sq ? 'last-from':'last-to');
+      if(!browsing){
+        if(selectedSquare===sq) d.classList.add('selected');
+        if(state.lastMove && (state.lastMove.from===sq || state.lastMove.to===sq)){
+          d.classList.add(state.lastMove.from===sq ? 'last-from':'last-to');
+        }
+        if(premoveFromSq===sq) d.classList.add('premove-selected');
+        else if(premoveSquares[sq]) d.classList.add('premove-sq');
       }
       if(kingInCheckSq===sq) d.classList.add('in-check');
 
-      const myTurn = isMyTurnToAct();
-      if(myTurn && piece && piece.color===chess.turn() && chess.moves({square:sq}).length>0){
-        d.classList.add('clickable-piece');
+      if(!browsing){
+        const myTurn = isMyTurnToAct();
+        if(myTurn && piece && piece.color===chess.turn() && chess.moves({square:sq}).length>0){
+          d.classList.add('clickable-piece');
+        } else if(!myTurn && mode==='online' && prefs.premoveEnabled && piece && myColor() && piece.color===(myColor()==='white'?'w':'b')){
+          d.classList.add('clickable-piece');
+        }
+        if(myTurn && legalTargetsMap[sq]){
+          const opts = legalTargetsMap[sq];
+          d.classList.add('legal-move');
+          if(opts[0].captured || opts[0].flags.indexOf('e')!==-1) d.classList.add('legal-capture');
+        }
+        d.addEventListener('click', ()=>onSquareClick(sq));
       }
-      if(myTurn && legalTargetsMap[sq]){
-        const opts = legalTargetsMap[sq];
-        d.classList.add('legal-move');
-        if(opts[0].captured || opts[0].flags.indexOf('e')!==-1) d.classList.add('legal-capture');
-      }
-
-      d.addEventListener('click', ()=>onSquareClick(sq));
       boardEl.appendChild(d);
     });
   }
 
-  function findKingSquare(color){
+  function findKingSquareOn(chessInst, color){
     for(let rank=1;rank<=8;rank++) for(let f=0;f<8;f++){
       const sq = FILES[f]+rank;
-      const p = chess.get(sq);
+      const p = chessInst.get(sq);
       if(p && p.type==='k' && p.color===color) return sq;
     }
     return null;
@@ -858,8 +1156,13 @@
 
   function onSquareClick(sq){
     if(!state || state.phase!=='playing') return;
+    if(viewingIndex!==null) return; // read-only while browsing past moves
     if(pendingPromotion) return;
-    if(!isMyTurnToAct()) return;
+    if(!isMyTurnToAct()){
+      if(mode==='online' && prefs.premoveEnabled) handlePremoveClick(sq);
+      return;
+    }
+    if(premoveQueue.length>0 || premoveFrom!==null) cancelPremoves();
 
     if(selectedSquare===sq){ deselect(); return; }
     if(legalTargetsMap[sq]){ attemptMove(sq); return; }
@@ -890,7 +1193,55 @@
     instr.textContent = state.phase!=='playing' ? 'Game over.' : (myTurn ? 'Select a piece to move.' : 'Waiting for opponent.');
 
     const resignBtn = document.getElementById('resignBtn');
+    const seated = mode!=='online' || !!myColor();
     resignBtn.disabled = state.phase!=='playing' || (mode==='online' && !myColor());
+
+    // Draw offer row
+    const drawRow = document.getElementById('drawRow');
+    drawRow.innerHTML = '';
+    if(state.phase==='playing'){
+      if(mode!=='online'){
+        const b1=document.createElement('button'); b1.className='secondary'; b1.textContent='Agree to draw';
+        b1.addEventListener('click', offerDraw);
+        drawRow.appendChild(b1);
+      } else {
+        const mine = myColor();
+        if(state.drawOffer && state.drawOffer!==mine && mine){
+          const accept=document.createElement('button'); accept.textContent='Accept draw';
+          accept.addEventListener('click', acceptDraw);
+          const decline=document.createElement('button'); decline.className='secondary'; decline.textContent='Decline';
+          decline.addEventListener('click', declineDraw);
+          drawRow.appendChild(accept); drawRow.appendChild(decline);
+        } else if(state.drawOffer && state.drawOffer===mine){
+          const pend=document.createElement('button'); pend.className='secondary'; pend.disabled=true; pend.textContent='Draw offer sent…';
+          const cancel=document.createElement('button'); cancel.className='secondary'; cancel.textContent='Cancel';
+          cancel.addEventListener('click', cancelDrawOffer);
+          drawRow.appendChild(pend); drawRow.appendChild(cancel);
+        } else {
+          const offer=document.createElement('button'); offer.className='secondary'; offer.textContent='Offer draw';
+          offer.disabled = !mine;
+          offer.addEventListener('click', offerDraw);
+          drawRow.appendChild(offer);
+        }
+      }
+    }
+
+    // Give time row
+    const giveRow = document.getElementById('giveTimeRow');
+    const canGiveTime = state.phase==='playing' && (mode!=='online' || !!myColor());
+    giveRow.classList.toggle('hidden', !canGiveTime);
+    document.getElementById('giveTime15Btn').disabled = !canGiveTime;
+    document.getElementById('giveTime60Btn').disabled = !canGiveTime;
+
+    // Premove banner
+    const pbanner = document.getElementById('premoveBanner');
+    if(mode==='online' && premoveQueue.length>0 && state.phase==='playing'){
+      pbanner.classList.remove('hidden');
+      document.getElementById('premoveBannerText').textContent =
+        premoveQueue.length===1 ? 'Premove queued' : `${premoveQueue.length} premoves queued`;
+    } else {
+      pbanner.classList.add('hidden');
+    }
   }
 
   function renderMoves(){
@@ -899,10 +1250,52 @@
     let html = '';
     for(let i=0;i<hist.length;i+=2){
       const num = (i/2)+1;
-      html += `<div><span class="mv-num">${num}.</span> ${hist[i]||''} ${hist[i+1]||''}</div>`;
+      const whiteCls = 'mv-entry' + (viewingIndex===i ? ' current' : '');
+      const blackCls = 'mv-entry' + (viewingIndex===i+1 ? ' current' : '');
+      const whiteSpan = hist[i] ? `<span class="${whiteCls}" data-idx="${i}">${hist[i]}</span>` : '';
+      const blackSpan = hist[i+1] ? `<span class="${blackCls}" data-idx="${i+1}">${hist[i+1]}</span>` : '';
+      html += `<div><span class="mv-num">${num}.</span> ${whiteSpan} ${blackSpan}</div>`;
     }
     el.innerHTML = html;
+    el.querySelectorAll('.mv-entry').forEach(span=>{
+      span.addEventListener('click', ()=> navToIndex(parseInt(span.dataset.idx,10)));
+    });
+    if(viewingIndex===null) el.scrollTop = el.scrollHeight;
+
+    const lastIdx = hist.length-1;
+    document.getElementById('navStartBtn').disabled = hist.length===0 || viewingIndex===-1;
+    document.getElementById('navPrevBtn').disabled = hist.length===0 || viewingIndex===-1;
+    document.getElementById('navNextBtn').disabled = hist.length===0 || viewingIndex===null;
+    document.getElementById('navLiveBtn').disabled = viewingIndex===null;
+
+    const banner = document.getElementById('historyBanner');
+    if(viewingIndex!==null){
+      banner.classList.remove('hidden');
+      const text = viewingIndex===-1 ? 'Viewing the starting position' : `Viewing move ${viewingIndex+1} of ${hist.length}`;
+      document.getElementById('historyBannerText').textContent = text;
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+
+  function renderChat(){
+    if(mode!=='online' || !state) return;
+    const el = document.getElementById('chatLog');
+    const msgs = state.chat || [];
+    el.innerHTML = msgs.map(m=>{
+      const mine = m.from===deviceId;
+      return `<div class="chat-msg${mine?' me':''}"><span class="who">${escapeHtml(m.name||'?')}:</span>${escapeHtml(m.text)}</div>`;
+    }).join('');
     el.scrollTop = el.scrollHeight;
+    const sendBtn = document.getElementById('chatSendBtn');
+    const input = document.getElementById('chatInput');
+    const canChat = !!myColor();
+    sendBtn.disabled = !canChat;
+    input.disabled = !canChat;
+    input.placeholder = canChat ? 'Say something…' : 'Take a seat to chat';
+  }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
   function startTicking(){
@@ -964,10 +1357,34 @@
   document.getElementById('lobbyCard').addEventListener('click', (e)=>{
     if(e.target.id==='startOnlineBtn') startOnlineGame();
   });
+  document.getElementById('randomSeatBtn').addEventListener('click', claimRandomSeat);
 
   document.getElementById('resignBtn').addEventListener('click', resign);
+  document.getElementById('giveTime15Btn').addEventListener('click', ()=>giveTime(15));
+  document.getElementById('giveTime60Btn').addEventListener('click', ()=>giveTime(60));
+  document.getElementById('cancelPremoveBtn').addEventListener('click', cancelPremoves);
+
+  document.getElementById('navStartBtn').addEventListener('click', navStart);
+  document.getElementById('navPrevBtn').addEventListener('click', navPrev);
+  document.getElementById('navNextBtn').addEventListener('click', navNext);
+  document.getElementById('navLiveBtn').addEventListener('click', goToLive);
+  document.getElementById('backToLiveBtn').addEventListener('click', goToLive);
+
+  document.getElementById('chatSendBtn').addEventListener('click', ()=>{
+    const input = document.getElementById('chatInput');
+    sendChatMessage(input.value);
+    input.value = '';
+  });
+  document.getElementById('chatInput').addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){
+      const input = document.getElementById('chatInput');
+      sendChatMessage(input.value);
+      input.value = '';
+    }
+  });
 
   document.getElementById('newGameBtn').addEventListener('click', ()=>{
+    viewingIndex=null; premoveQueue=[]; premoveFrom=null;
     if(mode==='online' && roomRef){
       if(!confirm('Reset this room for everyone and start a new lobby?')) return;
       state = freshState();
@@ -978,6 +1395,7 @@
     }
   });
   document.getElementById('overlayBtn').addEventListener('click', ()=>{
+    viewingIndex=null; premoveQueue=[]; premoveFrom=null;
     if(mode==='online' && roomRef){
       state = freshState();
       commit();
@@ -991,6 +1409,7 @@
   deviceId = getDeviceId();
   applyBoardTheme();
   renderAppearanceControls();
+  wirePremoveToggles();
   const urlRoom = new URLSearchParams(location.search).get('room');
   render();
   if(urlRoom && FIREBASE_CONFIGURED && fbDb){
