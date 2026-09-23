@@ -87,9 +87,8 @@
   .sq .coord{position:absolute; top:2px; left:4px; font-size:9px; font-family:'Space Grotesk',sans-serif; opacity:0.5;}
   .sq.light .coord{color:#1B3F63;}
   .sq.dark .coord{color:#9FB3C8;}
-  .piece{font-size:clamp(22px,6vw,42px); line-height:1; user-select:none; z-index:3;}
-  .piece.white{color:#F5F0E6; -webkit-text-stroke:1.3px #0B1E33; text-shadow:0 1px 2px rgba(0,0,0,0.4);}
-  .piece.black{color:#16283A; -webkit-text-stroke:0.6px #F5F0E6;}
+  .piece{width:82%; height:82%; object-fit:contain; z-index:3; pointer-events:none; user-select:none;
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35));}
   .sq.selected{box-shadow:inset 0 0 0 3px var(--accent);}
   .sq.last-from, .sq.last-to{box-shadow:inset 0 0 0 3px rgba(232,163,61,0.5);}
   .sq.in-check{box-shadow:inset 0 0 0 3px var(--danger); animation:pulse 1.2s ease-in-out infinite;}
@@ -155,7 +154,17 @@
   .overlay-card h2{font-family:'Space Grotesk',sans-serif; font-size:26px; margin:0 0 8px;}
   .overlay-card p{color:var(--paper-dim); font-size:14px; margin:0 0 20px;}
   .promo-btns{display:flex; gap:10px; justify-content:center; margin-top:8px;}
-  .promo-btns button{font-size:26px; padding:10px 16px;}
+  .promo-btns button{padding:8px;}
+  .promo-btns img{width:36px; height:36px; display:block;}
+  .swatch-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .board-swatch{width:38px; height:38px; border-radius:7px; cursor:pointer; border:2px solid var(--grid-line);}
+  .board-swatch.chosen{border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft);}
+  .piece-set-row{display:flex; gap:10px; flex-wrap:wrap;}
+  .piece-set-btn{display:flex; flex-direction:column; align-items:center; gap:4px; background:#0F2540;
+    border:2px solid var(--grid-line); border-radius:8px; padding:8px 12px; cursor:pointer;}
+  .piece-set-btn.chosen{border-color:var(--accent);}
+  .piece-set-btn img{width:28px; height:28px;}
+  .piece-set-btn span{font-size:11px; color:var(--paper-dim);}
   .hidden{display:none !important;}
   @media (max-width:640px){ main{flex-direction:column; align-items:stretch;} .board-col,.panel-col{max-width:100%;} }
 </style>
@@ -249,6 +258,14 @@
         <div class="moves-list" id="movesList"></div>
       </div>
 
+      <div class="card" id="appearanceCard">
+        <h2>Appearance</h2>
+        <p style="font-size:12px;color:var(--paper-dim);margin:0 0 8px;">Board theme</p>
+        <div class="swatch-row" id="boardThemeRow"></div>
+        <p style="font-size:12px;color:var(--paper-dim);margin:14px 0 8px;">Piece set</p>
+        <div class="piece-set-row" id="pieceSetRow"></div>
+      </div>
+
       <div class="card">
         <details>
           <summary>How to play</summary>
@@ -293,7 +310,72 @@
     {label:'Classical · 30+0', base:1800, inc:0}
   ];
   const FILES = ['a','b','c','d','e','f','g','h'];
-  const PIECE_GLYPH = {p:'♟',r:'♜',n:'♞',b:'♝',q:'♛',k:'♚'};
+
+  const BOARD_THEMES = {
+    brown:  {name:'Brown',  light:'#F0D9B5', dark:'#B58863'},
+    blue:   {name:'Blue',   light:'#DEE3E6', dark:'#8CA2AD'},
+    green:  {name:'Green',  light:'#FFFFDD', dark:'#86A666'},
+    purple: {name:'Purple', light:'#E8E0F0', dark:'#8877B0'},
+    coral:  {name:'Coral',  light:'#F4DFC8', dark:'#C97B63'},
+    grey:   {name:'Grey',   light:'#DADADA', dark:'#7A7A7A'}
+  };
+  const PIECE_SETS = {
+    wikipedia: {name:'Classic'},
+    alpha:     {name:'Alpha'},
+    uscf:      {name:'Club'}
+  };
+  const PIECE_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/img/chesspieces/';
+
+  function loadPrefs(){
+    try{
+      const raw = localStorage.getItem('tempo_prefs');
+      if(raw) return Object.assign({board:'brown', pieces:'wikipedia'}, JSON.parse(raw));
+    }catch(e){}
+    return {board:'brown', pieces:'wikipedia'};
+  }
+  function savePrefs(){ try{ localStorage.setItem('tempo_prefs', JSON.stringify(prefs)); }catch(e){} }
+  function applyBoardTheme(){
+    const t = BOARD_THEMES[prefs.board] || BOARD_THEMES.brown;
+    document.documentElement.style.setProperty('--sq-light', t.light);
+    document.documentElement.style.setProperty('--sq-dark', t.dark);
+  }
+  function pieceImgUrl(color, type){
+    return PIECE_BASE + prefs.pieces + '/' + color + type.toUpperCase() + '.png';
+  }
+  function renderAppearanceControls(){
+    const boardRow = document.getElementById('boardThemeRow');
+    boardRow.innerHTML='';
+    Object.keys(BOARD_THEMES).forEach(key=>{
+      const t = BOARD_THEMES[key];
+      const el = document.createElement('div');
+      el.className = 'board-swatch' + (prefs.board===key?' chosen':'');
+      el.style.background = `linear-gradient(135deg, ${t.light} 50%, ${t.dark} 50%)`;
+      el.title = t.name;
+      el.addEventListener('click', ()=>{
+        prefs.board=key; savePrefs(); applyBoardTheme(); renderAppearanceControls();
+        if(state && state.phase && state.phase!=='lobby') renderBoard();
+      });
+      boardRow.appendChild(el);
+    });
+    const pieceRow = document.getElementById('pieceSetRow');
+    pieceRow.innerHTML='';
+    Object.keys(PIECE_SETS).forEach(key=>{
+      const p = PIECE_SETS[key];
+      const btn=document.createElement('div');
+      btn.className='piece-set-btn' + (prefs.pieces===key?' chosen':'');
+      const img=document.createElement('img');
+      img.src = PIECE_BASE+key+'/bN.png';
+      img.alt=p.name;
+      const label=document.createElement('span'); label.textContent=p.name;
+      btn.appendChild(img); btn.appendChild(label);
+      btn.addEventListener('click', ()=>{
+        prefs.pieces=key; savePrefs(); renderAppearanceControls();
+        if(state && state.phase && state.phase!=='lobby') renderBoard();
+      });
+      pieceRow.appendChild(btn);
+    });
+  }
+  let prefs = loadPrefs();
 
   let mode = null;         // 'local' | 'online'
   let state = null;        // shared game/lobby state
@@ -729,9 +811,11 @@
     const activeColor = chess.turn();
     ['q','r','b','n'].forEach(p=>{
       const btn = document.createElement('button');
-      btn.className='piece ' + (activeColor==='w'?'white':'black');
       btn.style.background='#0F2540'; btn.style.border='1px solid var(--grid-line)';
-      btn.textContent = PIECE_GLYPH[p];
+      const img = document.createElement('img');
+      img.src = pieceImgUrl(activeColor, p);
+      img.alt = p;
+      btn.appendChild(img);
       btn.addEventListener('click', ()=>{
         finalizeMove(pendingPromotion.from, pendingPromotion.to, p);
       });
@@ -763,9 +847,11 @@
 
       const piece = chess.get(sq);
       if(piece){
-        const pEl=document.createElement('div');
-        pEl.className='piece ' + (piece.color==='w'?'white':'black');
-        pEl.textContent = PIECE_GLYPH[piece.type];
+        const pEl=document.createElement('img');
+        pEl.className='piece';
+        pEl.draggable=false;
+        pEl.alt='';
+        pEl.src = pieceImgUrl(piece.color, piece.type);
         d.appendChild(pEl);
       }
 
@@ -932,6 +1018,8 @@
 
   // ---------- INIT ----------
   deviceId = getDeviceId();
+  applyBoardTheme();
+  renderAppearanceControls();
   const urlRoom = new URLSearchParams(location.search).get('room');
   render();
   if(urlRoom && FIREBASE_CONFIGURED && fbDb){
